@@ -25,9 +25,7 @@ const Sections = sequelize.define("sections", {
   printerIp: {
     type: DataTypes.STRING,
     allowNull: true,
-    validate: {
-      isIP: true,
-    },
+    
   },
   program: {
     type: DataTypes.STRING,

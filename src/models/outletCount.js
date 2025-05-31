@@ -1,7 +1,9 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
+import InventoryItem from "./inventoryItem.js";
+import Outlet from "./outlet.js";
 
-const outletCount = sequelize.define("outletCount", {
+const OutletCount = sequelize.define("outletCount", {
   inventoryItemId: {
     type: DataTypes.INTEGER,
     allowNull: false,
@@ -11,13 +13,25 @@ const outletCount = sequelize.define("outletCount", {
     allowNull: false,
   },
   quantity: {
-    type: DataTypes.INTEGER,
+    type: DataTypes.DECIMAL,
     allowNull: false,
     defaultValue: 0, // Default stock is zero initially
-  }
+  },
+  createdBy: {
+    type: DataTypes.INTEGER, // Admin ID who created the menu type
+    allowNull: false,
+  },  
 }, {
   timestamps: true,
   tableName: "outletCount",
 });
+OutletCount.belongsTo(InventoryItem, {
+  foreignKey: "inventoryItemId",
+  as: "InventoryItem",
+});
 
-export default outletCount;
+OutletCount.belongsTo(Outlet, {
+  foreignKey: "outletId",
+  as: "Outlet",
+});
+export default OutletCount;

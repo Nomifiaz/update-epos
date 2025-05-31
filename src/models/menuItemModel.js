@@ -72,6 +72,7 @@ User.hasMany(MenuItem, { foreignKey: "createdBy", onDelete: "CASCADE" });
 MenuItem.belongsTo(User, { foreignKey: "createdBy" });
 
 import Menu from "./menuModel.js"; // 👈 import Menu
+import Recipe from "./recipeModel.js";
 
 Menu.hasMany(MenuItem, {
   foreignKey: "menuId",
@@ -80,6 +81,17 @@ Menu.hasMany(MenuItem, {
 MenuItem.belongsTo(Menu, {
   foreignKey: "menuId",
   onDelete: "CASCADE",
+});
+// models/MenuItem.js
+MenuItem.belongsTo(Recipe, {
+  foreignKey: 'recipeId',
+  as: 'recipe'
+});
+
+// models/Recipe.js
+Recipe.hasMany(MenuItem, {
+  foreignKey: 'recipeId',
+  as: 'menuItems'
 });
 
 

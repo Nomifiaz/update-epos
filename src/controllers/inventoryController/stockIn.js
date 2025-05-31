@@ -50,17 +50,22 @@ export const createStockIn = async (req, res) => {
     })
 
     // Update or Insert StoreStock
-    const storeStock = await StoreStock.findOne({ where: { inventoryItemId } })
+   // Update or Insert StoreStock
+const storeStock = await StoreStock.findOne({ where: { inventoryItemId } });
 
-    if (storeStock) {
-      storeStock.quantity += quantity
-      await storeStock.save()
-    } else {
-      await StoreStock.create({
-        inventoryItemId,
-        quantity,
-      })
-    }
+if (storeStock) {
+  storeStock.quantity += quantity;
+  storeStock.createdBy = createdBy; // ✅ Add this line
+  await storeStock.save();
+} else {
+  await StoreStock.create({
+    inventoryItemId,
+    quantity,
+    createdBy,
+  });
+}
+
+    
 
     return res.status(201).json({
       message: 'Stock In successfully recorded.',
@@ -76,11 +81,16 @@ export const createStockIn = async (req, res) => {
 export const getAllStockIn = async (req, res) => {
     try {
       const stockInRecords = await StockIn.findAll({
-        attributes: ['grnDate', 'grnNo'],
+        attributes: ["id",'grnDate', 'grnNo',"inventoryItemId","quantity"],
         include: [
           {
             model: Supplier,
             as: 'Supplier', // Make sure this matches your association alias
+            attributes: ['name'],
+          },
+          {
+            model: InventoryItem,
+            as: 'InventoryItem',
             attributes: ['name'],
           },
         ],
@@ -95,7 +105,7 @@ export const getAllStockIn = async (req, res) => {
         store: 'store',
       }));
   
-      return res.status(200).json(modifiedStockInRecords);
+      return res.status(200).json({message:"succesfully ",modifiedStockInRecords});
     } catch (error) {
       console.error('Error fetching StockIn records:', error);
       return res.status(500).json({ message: 'Server Error', error: error.message });

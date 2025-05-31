@@ -12,6 +12,7 @@ import { authenticateToken } from '../../middleware/authenticate.js'
 const router = express.Router()
 
 router.post('/confirm', authenticateToken, createOrder)
+
 router.get('/', getAllOrders)
 router.route('/logs').post(createOrderLogs).get(getOrderLogs)
 router.get('/logs/:id', getOrderLogsById)

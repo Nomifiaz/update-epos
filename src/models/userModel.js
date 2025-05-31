@@ -1,5 +1,6 @@
 import { DataTypes } from 'sequelize';
 import { sequelize } from '../config/db.js';
+import Role from './role.js';
 
 const User = sequelize.define(
     'User',
@@ -18,19 +19,19 @@ const User = sequelize.define(
                 notEmpty: true,
             },
         },
-        role: {
-            type: DataTypes.ENUM('admin', 'superAdmin', 'cashier'),
-            defaultValue: 'admin',
-            validate: {
-                isIn: [['admin', 'superAdmin', 'cashier']],
-            },
+        roleId: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
         },
         addedBy: {
-            type: DataTypes.INTEGER, 
-            allowNull: true, 
+            type: DataTypes.INTEGER,
+            allowNull: true,
         },
     },
     { timestamps: true },
 );
+User.belongsTo(Role, {
+  foreignKey: 'roleId',
+});
 
 export default User;

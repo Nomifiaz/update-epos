@@ -29,6 +29,10 @@ const InventoryItem = sequelize.define("InventoryItem", {
     type: DataTypes.INTEGER,
     allowNull: false,
   },
+  perPurchase: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+  },
   lastPurchasePrice: {
     type: DataTypes.DECIMAL(10, 2),
     allowNull: true,

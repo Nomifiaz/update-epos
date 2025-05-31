@@ -1,6 +1,8 @@
 import {DataTypes} from 'sequelize';
 import {sequelize} from '../config/db.js';
 import User from './userModel.js';
+import InventoryItem from './inventoryItem.js';
+import RecipeItem from './recipeitem.js';
 
 const Recipe = sequelize.define(
     'Recipe',
@@ -14,7 +16,8 @@ const Recipe = sequelize.define(
         },
         description: {
             type: DataTypes.JSON,
-            allowNull: false,
+            allowNull: true,
+            defaultValue:"best"
         },
         createdBy: {
             type: DataTypes.INTEGER, // Admin ID who created the menu type
@@ -37,10 +40,22 @@ const Recipe = sequelize.define(
             onDelete: 'CASCADE',
             onUpdate: 'CASCADE',
         },
+     
+     
+        cost: {
+            type: DataTypes.DECIMAL(10, 2),
+            allowNull: false,
+            validate: {
+                notEmpty: true,
+                isDecimal: true,
+            },
+        },
     },
     {timestamps: true},
 );
 
-
+// Recipe.hasMany(RecipeItem,{references:'recipeid'})
+// //
+// InventoryItem.
 
 export default Recipe;

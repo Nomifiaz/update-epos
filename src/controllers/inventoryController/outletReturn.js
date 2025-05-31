@@ -5,8 +5,7 @@ import {
   TransferStock,
   User,
   Sections,
-  returnStock
-
+  returnStock,
 } from '../../models/inventeryRelations.js'
 import OutletCount from '../../models/outletCount.js'
 import StoreStock from '../../models/storeStock.js'
@@ -19,13 +18,11 @@ export const returnStocks = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields.' })
     }
 
-    // Fetch the outlet's current stock for this item
     const outletStock = await OutletCount.findOne({ where: { outletId, inventoryItemId } })
     if (!outletStock || outletStock.quantity < quantity) {
       return res.status(400).json({ message: 'Not enough stock in outlet to return.' })
     }
 
-    // Fetch item info
     const inventoryItem = await InventoryItem.findOne({ where: { id: inventoryItemId } })
     if (!inventoryItem) {
       return res.status(404).json({ message: 'Inventory item not found.' })
@@ -40,12 +37,10 @@ export const returnStocks = async (req, res) => {
       return res.status(401).json({ message: 'Unauthorized: Missing user info.' })
     }
 
-    // Deduct quantity from OutletCount
     outletStock.quantity -= quantity
     outletStock.totalPurchase = parseFloat(outletStock.totalPurchase || 0) - parseFloat(totalReturn)
     await outletStock.save()
 
-    // Update or insert into StoreStock
     const storeStock = await StoreStock.findOne({ where: { inventoryItemId } })
     if (storeStock) {
       storeStock.quantity += quantity
@@ -57,7 +52,6 @@ export const returnStocks = async (req, res) => {
       })
     }
 
-    // Record the return in ReturnStock table
     const returnRecord = await returnStock.create({
       outletId,
       sectionId,
@@ -81,10 +75,12 @@ export const returnStocks = async (req, res) => {
   }
 }
 
-// get all return stocks
 export const getAllReturnStocks = async (req, res) => {
   try {
+    const userId = req.user.id
+
     const returnStocks = await returnStock.findAll({
+      where: { createdBy: userId },
       include: [
         {
           model: Outlet,
@@ -110,8 +106,7 @@ export const getAllReturnStocks = async (req, res) => {
       order: [['returnDate', 'DESC']],
     })
 
-    // Format the output
-    const formattedData = returnStocks.map(stock => ({
+    const formattedData = returnStocks.map((stock) => ({
       user: stock.createdByUser?.userName || '',
       section: stock.section?.name || '',
       item: stock.inventoryItem?.name || '',
@@ -133,38 +128,31 @@ export const getAllReturnStocks = async (req, res) => {
   }
 }
 
-// report for return stocks
 export const getAllReturnStocksReports = async (req, res) => {
   try {
-    const { sectionId, inventoryItemId, categoryId, fromDate, toDate } = req.query;
+    const { sectionId, inventoryItemId, categoryId, fromDate, toDate } = req.query
+    const createdBy = req.user.id
 
-    // Get user info from the request (set by the middleware)
-    const createdBy = req.user.id; // Assuming the user ID is stored in `req.user.id` after JWT decoding
+    const whereClause = { createdBy }
 
-    // Build the "where" clause based on filters
-    const whereClause = { createdBy };
-
-    // Additional filters for section, item, and category
     if (sectionId) {
-      whereClause.sectionId = sectionId;
+      whereClause.sectionId = sectionId
     }
 
     if (inventoryItemId) {
-      whereClause.inventoryItemId = inventoryItemId;
+      whereClause.inventoryItemId = inventoryItemId
     }
 
     if (categoryId) {
-      whereClause['$inventoryItem.categoryId$'] = categoryId;
+      whereClause['$inventoryItem.categoryId$'] = categoryId
     }
 
-    // Date filter
     if (fromDate && toDate) {
       whereClause.returnDate = {
         [Sequelize.Op.between]: [new Date(fromDate), new Date(toDate)],
-      };
+      }
     }
 
-    // Fetch the return stocks with filters
     const returnStocks = await returnStock.findAll({
       where: whereClause,
       include: [
@@ -197,9 +185,8 @@ export const getAllReturnStocksReports = async (req, res) => {
         },
       ],
       order: [['returnDate', 'DESC']],
-    });
+    })
 
-    // Format the output
     const formattedData = returnStocks.map((stock) => ({
       user: stock.createdByUser?.userName || '',
       section: stock.section?.name || '',
@@ -211,14 +198,14 @@ export const getAllReturnStocksReports = async (req, res) => {
       returnDate: stock.returnDate,
       remarks: stock.remarks,
       outlet: stock.outlet?.name || '',
-    }));
+    }))
 
     return res.status(200).json({
       message: 'Return stock data fetched successfully.',
       data: formattedData,
-    });
+    })
   } catch (error) {
-    console.error('Error fetching return stocks:', error);
-    return res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Error fetching return stocks:', error)
+    return res.status(500).json({ message: 'Server error', error: error.message })
   }
-};
+}

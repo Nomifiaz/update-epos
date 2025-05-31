@@ -1,6 +1,7 @@
 import path from 'path'
 import { Deal, MenuItem } from '../models/relations.js'
 import User from '../models/userModel.js'
+import Role from '../models/role.js';
 
 export const createDeal = async (req, res) => {
   const { name, description, price, quantity, status, menuId } = req.body;
@@ -49,41 +50,82 @@ export const createDeal = async (req, res) => {
 export const getDeals = async (req, res) => {
   try {
     const userID = req.user.id;
-    const userRole = req.user.role;
-    
-    let deals;
+
+    // Get the full user record with role
+    const user = await User.findOne({
+      where: { id: userID },
+      include: { model: Role, attributes: ['name'] },
+    });
+
+    if (!user || !user.role) {
+      return res.status(404).json({ success: false, message: 'User or role not found' });
+    }
+
+    const userRole = user.role.name;
+    let createdByIds = [];
 
     if (userRole === 'admin' || userRole === 'superAdmin') {
-      // Admins get deals they created
-      deals = await Deal.findAll({
-        where: { createdBy: userID },
-        include: [{
-          model: MenuItem,
-          attributes: ['name'],
-          through: { attributes: [] }
-        }]
+      // Admin/SuperAdmin gets deals by themselves, their managers and cashiers
+      const managers = await User.findAll({
+        where: { addedBy: userID },
+        include: { model: Role, where: { name: 'manager' }, attributes: [] },
+        attributes: ['id'],
       });
-    } else if (userRole === 'cashier') {
-      // Cashiers get deals created by their admin
-      const cashier = await User.findOne({ where: { id: userID } });
+      const managerIds = managers.map(m => m.id);
 
-      if (!cashier || !cashier.addedBy) {
-        return res.status(403).json({ success: false, message: 'Unauthorized' });
+      const cashiers = await User.findAll({
+        where: { addedBy: managerIds },
+        include: { model: Role, where: { name: 'cashier' }, attributes: [] },
+        attributes: ['id'],
+      });
+      const cashierIds = cashiers.map(c => c.id);
+
+      createdByIds = [userID, ...managerIds, ...cashierIds];
+
+    } else if (userRole === 'manager') {
+      // Manager gets deals by themselves, their admin, and their cashiers
+      const adminId = user.addedBy;
+
+      const cashiers = await User.findAll({
+        where: { addedBy: userID },
+        include: { model: Role, where: { name: 'cashier' }, attributes: [] },
+        attributes: ['id'],
+      });
+      const cashierIds = cashiers.map(c => c.id);
+
+      createdByIds = [userID, adminId, ...cashierIds];
+
+    } else if (userRole === 'cashier') {
+      // Cashier gets deals by themselves, their manager, and their admin
+      const manager = await User.findOne({ where: { id: user.addedBy } });
+
+      if (!manager || !manager.addedBy) {
+        return res.status(403).json({ success: false, message: 'Manager or admin not found' });
       }
 
-      deals = await Deal.findAll({
-        where: { createdBy: cashier.addedBy },
-        include: [{
-          model: MenuItem,
-          attributes: ['name'],
-          through: { attributes: [] }
-        }]
-      });
+      const adminId = manager.addedBy;
+
+      createdByIds = [userID, user.addedBy, adminId];
     } else {
       return res.status(403).json({ success: false, message: 'Unauthorized role' });
     }
 
-    res.status(200).json({ success: true, message: 'Deals fetched successfully', deals });
+    // Fetch deals with included menu item names
+    const deals = await Deal.findAll({
+      where: { createdBy: createdByIds },
+      include: [{
+        model: MenuItem,
+        attributes: ['name'],
+        through: { attributes: [] },
+      }],
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Deals fetched successfully',
+      deals,
+    });
+
   } catch (error) {
     console.error('Error fetching deals:', error);
     res.status(500).json({
@@ -93,6 +135,7 @@ export const getDeals = async (req, res) => {
     });
   }
 };
+
 //............................................
 export const getDealById = async (req, res) => {
   const { id } = req.params

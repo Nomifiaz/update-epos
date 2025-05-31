@@ -1,6 +1,15 @@
 import { Outlet, InventoryItem, InventoryCatagory, TransferStock,User,Sections} from '../../models/inventeryRelations.js';
 import StoreStock from '../../models/storeStock.js';
+import outletCount from "../../models/outletCount.js"
+import { Op } from 'sequelize'
+
+import { sequelize } from "../../config/db.js"; // Make sure to import your Sequelize instance
+
+ // Make sure this is your Sequelize instance
+
+
 export const outletTransfer = async (req, res) => {
+  const t = await sequelize.transaction(); // Start transaction
   try {
     const { outletId, inventoryItemId, quantity, remarks, sectionId, creditDate } = req.body;
 
@@ -8,8 +17,7 @@ export const outletTransfer = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields.' });
     }
 
-    // Fetch item details
-    const inventoryItem = await InventoryItem.findOne({ where: { id: inventoryItemId } });
+    const inventoryItem = await InventoryItem.findOne({ where: { id: inventoryItemId }, transaction: t });
     if (!inventoryItem) {
       return res.status(404).json({ message: 'Inventory item not found.' });
     }
@@ -17,28 +25,24 @@ export const outletTransfer = async (req, res) => {
     const purchaseRate = parseFloat(inventoryItem.lastPurchasePrice);
     const itemCode = inventoryItem.code;
 
-    if (!purchaseRate || !itemCode ) {
+    if (!purchaseRate || !itemCode) {
       return res.status(400).json({ message: 'Inventory item missing purchase rate, code or unit.' });
     }
 
     const totalPurchase = (parseFloat(quantity) * purchaseRate).toFixed(2);
-
     const createdBy = req.user?.id;
     if (!createdBy) {
       return res.status(401).json({ message: 'Unauthorized: Missing user info.' });
     }
 
-    // ✅ Check StoreStock availability
-    const storeStock = await StoreStock.findOne({ where: { inventoryItemId } });
+    const storeStock = await StoreStock.findOne({ where: { inventoryItemId }, transaction: t });
     if (!storeStock || storeStock.quantity < quantity) {
       return res.status(400).json({ message: 'Not enough stock available in store to transfer.' });
     }
 
-    // ✅ Deduct quantity from StoreStock
     storeStock.quantity -= quantity;
-    await storeStock.save();
+    await storeStock.save({ transaction: t });
 
-    // ✅ Record the transfer
     const transfer = await TransferStock.create({
       outletId,
       sectionId,
@@ -50,33 +54,40 @@ export const outletTransfer = async (req, res) => {
       purchaseRate,
       code: itemCode,
       totalPurchase,
-    });
+    }, { transaction: t });
 
-    // ✅ Update or insert into OutletCount
-    const outletStock = await OutletCount.findOne({ where: { outletId, inventoryItemId } });
+    const outletStock = await outletCount.findOne({ where: { outletId, inventoryItemId }, transaction: t });
     if (outletStock) {
       outletStock.quantity += quantity;
       outletStock.purchaseRate = purchaseRate;
       outletStock.totalPurchase = parseFloat(outletStock.totalPurchase) + parseFloat(totalPurchase);
-      await outletStock.save();
+      outletStock.createdBy = createdBy; // Optionally update creator
+      await outletStock.save({ transaction: t });
     } else {
-      await OutletCount.create({
+      await outletCount.create({
         outletId,
         inventoryItemId,
         quantity,
-    
-      });
+        purchaseRate,
+        totalPurchase,
+        createdBy, // ✅ added here
+      }, { transaction: t });
     }
+
+    await t.commit(); // Commit all changes
 
     return res.status(201).json({
       message: 'Stock successfully transferred to outlet.',
       data: transfer,
     });
   } catch (error) {
+    await t.rollback(); // Rollback all changes on error
     console.error('Error in outletTransfer:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
+
 // fatch detsils .................
 
 
@@ -90,9 +101,14 @@ export const getAllTransfers = async (req, res) => {
         const transfers = await TransferStock.findAll({
             where: { createdBy },
             include: [{
-                model: Outlet,
-                as: 'outlet',
-                attributes: ['name'],
+              model: InventoryItem,
+                as: 'inventoryItem',
+                attributes: ['name', 'lastPurchasePrice'],
+            },
+            {
+              model: Outlet,
+              as: 'outlet',
+              attributes: ['name'],
             }],
             attributes: ['id', 'creditDate', 'outletId', 'quantity', 'totalPurchase'],
             order: [['creditDate', 'DESC']],
@@ -100,6 +116,7 @@ export const getAllTransfers = async (req, res) => {
 
         const formattedTransfers = transfers.map(t => ({
             id: t.id,
+            itemName: t.inventoryItem?.name,
             creditDate: t.creditDate,
             outletName: t.outlet?.name,
             store: 'Store',
@@ -107,13 +124,72 @@ export const getAllTransfers = async (req, res) => {
             totalPurchase: t.totalPurchase
         }));
 
-        return res.status(200).json(formattedTransfers);
+        return res.status(200).json({message:"successfuly",formattedTransfers});
     } catch (error) {
         console.error('Error fetching transfers:', error);
         return res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+//
+export const getmangerwise = async (req, res) => {
+  try {
+    const managerId = req.user?.id;
+    if (!managerId) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    console.log(managerId)
 
+    // Step 1: Find all outlet IDs where managerId matches logged-in user
+    const outlets = await Outlet.findAll({
+      where: { managerId: managerId },
+      attributes: ['id'],
+    });
+
+    const outletIds = outlets.map(outlet => outlet.id);
+
+    if (outletIds.length === 0) {
+      return res.status(200).json({ message: 'No assigned outlets', formattedTransfers: [] });
+    }
+
+    // Step 2: Fetch transfer records only for those outlet IDs
+    const transfers = await TransferStock.findAll({
+      where: {
+        outletId: { [Op.in]: outletIds },
+      },
+      include: [
+        {
+          model: InventoryItem,
+          as: 'inventoryItem',
+          attributes: ['name', 'lastPurchasePrice'],
+        },
+        {
+          model: Outlet,
+          as: 'outlet',
+          attributes: ['name'],
+        },
+      ],
+      attributes: ['id', 'creditDate', 'outletId', 'quantity', 'totalPurchase'],
+      order: [['creditDate', 'DESC']],
+    });
+
+    // Step 3: Format output
+    const formattedTransfers = transfers.map(t => ({
+      id: t.id,
+      itemName: t.inventoryItem?.name,
+      creditDate: t.creditDate,
+      outletName: t.outlet?.name,
+      store: 'Store',
+      quantity: t.quantity,
+      totalPurchase: t.totalPurchase,
+    }));
+
+    return res.status(200).json({ message: 'Successfully fetched', formattedTransfers });
+
+  } catch (error) {
+    console.error('Error fetching transfers:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
 
 // fatch details by id 
 export const getTransferById = async (req, res) => {
@@ -141,6 +217,7 @@ export const getTransferById = async (req, res) => {
       }
   
       return res.status(200).json({
+        message:"successfully",
         id: transfer.id,
         creditDate: transfer.creditDate,
         outletName: transfer.outlet?.name,  // Use lowercase 'outlet'

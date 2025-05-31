@@ -17,6 +17,7 @@ import errorHandler from './middleware/errorHandler.js'
 import notFound from './middleware/notFound.js'
 import config from './config/config.js'
 import inventoryRoutes from './Routes/inventoryRoutes/index.js'
+import RoleRouter from './Routes/rolePermessionRouter/index.js'
 
 const app = express()
 
@@ -54,6 +55,7 @@ app.use('/api/table', tableRouter)
 app.use('/api/waiter', waiterRouter)
 app.use('/api/deal', dealRoute)
 app.use('/api/inventory', inventoryRoutes)
+app.use('/api/role', RoleRouter)
 
 // 404 Route
 app.use(notFound)

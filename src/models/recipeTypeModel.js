@@ -1,6 +1,7 @@
 import {DataTypes} from 'sequelize';
 import {sequelize} from '../config/db.js';
 import User from './userModel.js';
+import Sections from './sections.js';
 
 const RecipeType = sequelize.define(
     'RecipeType',
@@ -11,6 +12,14 @@ const RecipeType = sequelize.define(
             validate: {
                 notEmpty: true,
             },
+        },
+        sectionId:{
+            type:DataTypes.INTEGER,
+            allowNull:false,
+            references:{
+                model:Sections,
+                key:"id"
+            }
         },
         createdBy: {
             type: DataTypes.INTEGER, // Admin ID who created the menu type

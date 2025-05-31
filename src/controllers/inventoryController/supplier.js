@@ -39,6 +39,7 @@ export const createSupplier = async (req, res) => {
 
     res.status(201).json({ message: 'Supplier created successfully', supplier: newSupplier })
   } catch (error) {
+    console.log(error)
     res.status(500).json({ message: 'Error creating supplier', error: error.message })
   }
 }

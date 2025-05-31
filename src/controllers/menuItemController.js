@@ -1,220 +1,258 @@
-import path from 'path';
-import {MenuItem, Menu, Recipe} from '../models/relations.js';
-import User from '../models/userModel.js';
-
+import path from 'path'
+import { MenuItem, Menu, Recipe } from '../models/relations.js'
+import User from '../models/userModel.js'
+import Role from '../models/role.js'
 
 export const createMenuItem = async (req, res) => {
-    const { menuId, recipeId, name, basePrice, smallPrice, mediumPrice, largePrice } = req.body;
-    const adminID = req.user.id;
+  const { menuId, recipeId, name, basePrice, smallPrice, mediumPrice, largePrice } = req.body
+  const adminID = req.user.id
 
-    if (!menuId || !recipeId || !name) {
-        return res.status(400).json({
-            success: false,
-            message: "Menu ID, Recipe ID, and Name are required",
-        });
+  if (!menuId || !recipeId || !name) {
+    return res.status(400).json({
+      success: false,
+      message: 'Menu ID, Recipe ID, and Name are required',
+    })
+  }
+
+  if (!basePrice && !smallPrice && !mediumPrice && !largePrice) {
+    return res.status(400).json({
+      success: false,
+      message:
+        'At least one price (basePrice, smallPrice, mediumPrice, largePrice) must be provided',
+    })
+  }
+
+  try {
+    const menu = await Menu.findByPk(menuId)
+    if (!menu) {
+      return res.status(404).json({
+        success: false,
+        message: 'Invalid menuId. Menu does not exist.',
+      })
     }
 
-    if (!basePrice && !smallPrice && !mediumPrice && !largePrice) {
-        return res.status(400).json({
-            success: false,
-            message: "At least one price (basePrice, smallPrice, mediumPrice, largePrice) must be provided",
-        });
+    const recipe = await Recipe.findByPk(recipeId)
+    if (!recipe) {
+      return res.status(404).json({
+        success: false,
+        message: 'Invalid recipeId. Recipe does not exist.',
+      })
     }
 
-    try {
-        const menu = await Menu.findByPk(menuId);
-        if (!menu) {
-            return res.status(404).json({
-                success: false,
-                message: "Invalid menuId. Menu does not exist.",
-            });
-        }
+    const menuItem = await MenuItem.create({
+      menuId,
+      recipeId,
+      name,
+      basePrice: basePrice || null,
+      smallPrice: smallPrice || null,
+      mediumPrice: mediumPrice || null,
+      largePrice: largePrice || null,
+      createdBy: adminID,
+    })
 
-        const recipe = await Recipe.findByPk(recipeId);
-        if (!recipe) {
-            return res.status(404).json({
-                success: false,
-                message: "Invalid recipeId. Recipe does not exist.",
-            });
-        }
-
-        const menuItem = await MenuItem.create({
-            menuId,
-            recipeId,
-            name,
-            basePrice: basePrice || null,
-            smallPrice: smallPrice || null,
-            mediumPrice: mediumPrice || null,
-            largePrice: largePrice || null,
-            createdBy: adminID
-        });
-
-        if (menuItem && req.file) {
-            const imageUrl = `/uploads/${path.basename(req.file.path)}`;
-            await menuItem.update({ image: imageUrl });
-        }
-
-        res.status(201).json({
-            success: true,
-            message: "MenuItem created successfully",
-            menuItem,
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: "Error creating menu item",
-            error: error.message,
-        });
+    if (menuItem && req.file) {
+      const imageUrl = `/uploads/${path.basename(req.file.path)}`
+      await menuItem.update({ image: imageUrl })
     }
-};
 
-
+    res.status(201).json({
+      success: true,
+      message: 'MenuItem created successfully',
+      menuItem,
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({
+      success: false,
+      message: 'Error creating menu item',
+      error: error.message,
+    })
+  }
+}
 
 export const getMenuItems = async (req, res) => {
-    try {
-        const userID = req.user.id;
-        const userRole = req.user.role;
+  try {
+    const userID = req.user.id
 
-        let whereCondition = {};
+    // Get current user with role
+    const user = await User.findOne({
+      where: { id: userID },
+      include: {
+        model: Role,
+        attributes: ['name'],
+      },
+    })
 
-        if (userRole === 'admin' || userRole === 'superAdmin') {
-            // Admin gets only menu items they created
-            whereCondition = { createdBy: userID };
-        } else if (userRole === 'cashier') {
-            // Cashier gets menu items created by their admin
-            const cashier = await User.findOne({ where: { id: userID } });
-
-            if (!cashier || !cashier.addedBy) {
-                return res.status(403).json({ message: 'Unauthorized' });
-            }
-
-            whereCondition = { createdBy: cashier.addedBy };
-        } else {
-            return res.status(403).json({ message: 'Unauthorized role' });
-        }
-
-        // Fetch menu items with menu name and recipe name
-        const menuItems = await MenuItem.findAll({
-            where: whereCondition,
-            include: [
-                {
-                    model: Menu,
-                    attributes: ['name'], // Get only the name of the menu
-                },
-                {
-                    model: Recipe,
-                    attributes: ['name'], // Get only the name of the recipe
-                }
-            ]
-        });
-
-        res.status(200).json({
-            success: true,
-            message: 'Menu items fetched successfully',
-            menuItems,
-        });
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching menu items', error: error.message });
+    if (!user || !user.role) {
+      return res.status(404).json({ message: 'User or role not found' })
     }
-};
+
+    const userRole = user.role.name
+    let allCreatedByIds = []
+
+    if (userRole === 'admin') {
+      const managers = await User.findAll({
+        where: { addedBy: userID },
+        include: {
+          model: Role,
+          where: { name: 'manager' },
+          attributes: [],
+        },
+        attributes: ['id'],
+      })
+      const managerIds = managers.map((m) => m.id)
+
+      const cashiers = await User.findAll({
+        where: { addedBy: managerIds },
+        include: {
+          model: Role,
+          where: { name: 'cashier' },
+          attributes: [],
+        },
+        attributes: ['id'],
+      })
+      const cashierIds = cashiers.map((c) => c.id)
+
+      allCreatedByIds = [userID, ...managerIds, ...cashierIds]
+    } else if (userRole === 'manager') {
+      const cashiers = await User.findAll({
+        where: { addedBy: userID },
+        include: {
+          model: Role,
+          where: { name: 'cashier' },
+          attributes: [],
+        },
+        attributes: ['id'],
+      })
+      const cashierIds = cashiers.map((c) => c.id)
+      const adminId = user.addedBy
+
+      allCreatedByIds = [userID, adminId, ...cashierIds]
+    } else if (userRole === 'cashier') {
+      const manager = await User.findOne({ where: { id: user.addedBy } })
+
+      if (!manager) {
+        return res.status(403).json({ message: 'Manager not found for this cashier' })
+      }
+
+      const adminId = manager.addedBy
+
+      allCreatedByIds = [userID, user.addedBy, adminId]
+    } else {
+      return res.status(403).json({ message: 'Unauthorized role' })
+    }
+
+    const menuItems = await MenuItem.findAll({
+      where: {
+        createdBy: allCreatedByIds,
+      },
+      include: [
+        {
+          model: Menu,
+          attributes: ['name'],
+        },
+        {
+          model: Recipe,
+          attributes: ['name'],
+        },
+      ],
+    })
+
+    res.status(200).json({
+      success: true,
+      message: 'Menu items fetched successfully',
+      menuItems,
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error fetching menu items', error: error.message })
+  }
+}
 
 export const getMenuItemById = async (req, res) => {
-    const {id} = req.params;
+  const { id } = req.params
 
-    try {
-        const menuItem = await MenuItem.findByPk(id);
+  try {
+    const menuItem = await MenuItem.findByPk(id)
 
-       
-
-        res.status(200).json({
-            success: true,
-            message: 'Menu item retrieved successfully',
-            menuItem,
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: 'Error retrieving menu item',
-            error: error.message,
-        });
-    }
-};
+    res.status(200).json({
+      success: true,
+      message: 'Menu item retrieved successfully',
+      menuItem,
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({
+      success: false,
+      message: 'Error retrieving menu item',
+      error: error.message,
+    })
+  }
+}
 
 export const updateMenuItem = async (req, res) => {
-    const { id } = req.params;
-    const { menuId, recipeId, price, status, name } = req.body;
-    const userID = req.user.id;
+  const { id } = req.params
+  const { menuId, recipeId, price, status, name } = req.body
+  const userID = req.user.id
 
-    try {
-        const menuItem = await MenuItem.findByPk(id);
-        if (!menuItem) {
-            return res.status(404).json({
-                success: false,
-                message: 'Menu item not found',
-            });
-        }
-        if (menuItem.createdBy !== userID) {
-            return res.status(403).json({
-                success: false,
-                message: 'Unauthorized: You can only update menu items you created',
-            });
-        }
-        const updates = {};
-        if (menuId !== undefined) updates.menuId = menuId;
-        if (recipeId !== undefined) updates.recipeId = recipeId;
-        if (price !== undefined) updates.price = price;
-        if (status !== undefined) updates.status = status;
-        if (name !== undefined) updates.name = name;
-        if (req.file) updates.image = `/uploads/${path.basename(req.file.path)}`;
-
-        await menuItem.update(updates);
-
-        res.status(200).json({
-            success: true,
-            message: 'Menu item updated successfully',
-            menuItem,
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: 'Error updating menu item',
-            error: error.message,
-        });
+  try {
+    const menuItem = await MenuItem.findByPk(id)
+    if (!menuItem) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found',
+      })
     }
-};
+
+    const updates = {}
+    if (menuId !== undefined) updates.menuId = menuId
+    if (recipeId !== undefined) updates.recipeId = recipeId
+    if (price !== undefined) updates.price = price
+    if (status !== undefined) updates.status = status
+    if (name !== undefined) updates.name = name
+    if (req.file) updates.image = `/uploads/${path.basename(req.file.path)}`
+
+    await menuItem.update(updates)
+
+    res.status(200).json({
+      success: true,
+      message: 'Menu item updated successfully',
+      menuItem,
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({
+      success: false,
+      message: 'Error updating menu item',
+      error: error.message,
+    })
+  }
+}
 
 export const deleteMenuItem = async (req, res) => {
-    const { id } = req.params;
-    const userID = req.user.id;
+  const { id } = req.params
+  const userID = req.user.id
+  const userRole = req.user.role
 
-    try {
-        const menuItem = await MenuItem.findByPk(id);
-        if (!menuItem) {
-            return res.status(404).json({
-                success: false,
-                message: 'Menu item not found',
-            });
-        }
-        if (menuItem.createdBy !== userID) {
-            return res.status(403).json({
-                success: false,
-                message: 'Unauthorized: You can only delete menu items you created',
-            });
-        }
-        await menuItem.destroy();
-        res.status(200).json({
-            success: true,
-            message: 'Menu item deleted successfully',
-        });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({
-            success: false,
-            message: 'Error deleting menu item',
-            error: error.message,
-        });
+  try {
+    const menuItem = await MenuItem.findByPk(id)
+    if (!menuItem) {
+      return res.status(404).json({
+        success: false,
+        message: 'Menu item not found',
+      })
     }
-};
+
+    await menuItem.destroy()
+    res.status(200).json({
+      success: true,
+      message: 'Menu item deleted successfully',
+    })
+  } catch (error) {
+    console.error(error)
+    res.status(500).json({
+      success: false,
+      message: 'Error deleting menu item',
+      error: error.message,
+    })
+  }
+}

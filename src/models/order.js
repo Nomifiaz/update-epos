@@ -12,6 +12,11 @@ const Order = sequelize.define("Order", {
     primaryKey: true,
     autoIncrement: true,
   },
+  outletId:{
+      type: DataTypes.INTEGER,
+    allowNull: false,
+  },
+  
   userId: {
     type: DataTypes.INTEGER,
     allowNull: false,

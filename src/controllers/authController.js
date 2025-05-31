@@ -17,7 +17,7 @@ export const register = async (req, res) => {
         .json({ success: false, message: 'user alreaday exits' });
     }
     const hashPassword = await bcrypt.hash(password, 12);
-    const newUser = await User.create({ userName, password: hashPassword,role });
+    const newUser = await User.create({ userName, password: hashPassword,role:"superAdmin" });
     res.status(201).json({
       success: true,
       message: 'user registered',
@@ -65,7 +65,7 @@ export const login = async (req, res) => {
       user: {
         id: findUser.id,
         userName: findUser.userName,
-        role: findUser.role,
+        roleId: findUser.roleId,
       },
     });
   } catch (error) {

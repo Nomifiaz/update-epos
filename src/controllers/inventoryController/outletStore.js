@@ -15,7 +15,7 @@ export const getOutletCount = async (req, res) => {
   try {
     const userID = req.user.id;
 
-    // Fetch current user with role
+    // Fetch user with role
     const user = await User.findOne({
       where: { id: userID },
       include: {
@@ -29,70 +29,37 @@ export const getOutletCount = async (req, res) => {
     }
 
     const userRole = user.role.name;
-    let allCreatedByIds = [];
+    let outletFilter = {};
 
     if (userRole === 'admin') {
-      const managers = await User.findAll({
-        where: { addedBy: userID },
-        include: {
-          model: Role,
-          where: { name: 'manager' },
-          attributes: [],
-        },
-        attributes: ['id'],
-      });
-      const managerIds = managers.map((m) => m.id);
-
-      const cashiers = await User.findAll({
-        where: { addedBy: managerIds },
-        include: {
-          model: Role,
-          where: { name: 'cashier' },
-          attributes: [],
-        },
-        attributes: ['id'],
-      });
-      const cashierIds = cashiers.map((c) => c.id);
-
-      allCreatedByIds = [userID, ...managerIds, ...cashierIds];
+      // Admin: no filter (show all outlet counts)
+      outletFilter = {};
     } else if (userRole === 'manager') {
-      const cashiers = await User.findAll({
-        where: { addedBy: userID },
-        include: {
-          model: Role,
-          where: { name: 'cashier' },
-          attributes: [],
-        },
-        attributes: ['id'],
-      });
-      const cashierIds = cashiers.map((c) => c.id);
-      const adminId = user.addedBy;
-
-      allCreatedByIds = [userID, adminId, ...cashierIds];
+      // Manager: show outlet counts for outlets where managerId is current user
+      outletFilter = { managerId: userID };
     } else if (userRole === 'cashier') {
+      // Cashier: find manager and show outlet counts for manager's outlets
       const manager = await User.findOne({ where: { id: user.addedBy } });
-
       if (!manager) {
         return res.status(403).json({ message: 'Manager not found for this cashier' });
       }
-
-      const adminId = manager.addedBy;
-
-      allCreatedByIds = [userID, user.addedBy, adminId];
+      outletFilter = { managerId: manager.id };
     } else {
       return res.status(403).json({ message: 'Unauthorized role' });
     }
 
-    // Fetch OutletCounts by createdBy list
+    // Get outlet IDs matching the filter
+    const outlets = await Outlet.findAll({ where: outletFilter, attributes: ['id'] });
+    const outletIds = outlets.map(o => o.id);
+
+    // Get OutletCount entries for filtered outlets
     const outletCount = await OutletCount.findAll({
-      where: {
-        createdBy: allCreatedByIds,
-      },
+      where: { outletId: outletIds },
       include: [
         {
           model: InventoryItem,
           as: "InventoryItem",
-          attributes: ["name", "purchaseUnitId", "lastPurchasePrice", "categoryId","saleUnitId"],
+          attributes: ["name", "purchaseUnitId", "lastPurchasePrice", "categoryId", "saleUnitId"],
           include: [
             {
               model: InventoryCatagory,
@@ -150,3 +117,4 @@ export const getOutletCount = async (req, res) => {
     });
   }
 };
+ 

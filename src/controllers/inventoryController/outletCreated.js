@@ -1,6 +1,8 @@
 // File: controllers/outletController.js
 
 import Outlet from '../../models/outlet.js'
+import Role from '../../models/role.js'
+import User from '../../models/userModel.js'
 
 // ✅ CREATE a new outlet
 export const createOutlet = async (req, res) => {
@@ -23,22 +25,46 @@ export const createOutlet = async (req, res) => {
 }
 
 // ✅ READ all outlets
+
 export const getAllOutlets = async (req, res) => {
   try {
-    const createdby = req.user?.id
+    const userId = req.user?.id;
 
-    if (!createdby) {
-      return res.status(401).json({ message: 'Unauthorized: Missing user info.' })
+    if (!userId) {
+      return res.status(401).json({ message: 'Unauthorized: Missing user ID' });
     }
 
-    const outlets = await Outlet.findAll({ where: { createdby } })
+    // Fetch user and join role to get role name
+    const user = await User.findByPk(userId, {
+      include: {
+        model: Role,
+        attributes: ['name'], 
+      },
+    });
+    if (!user || !user.role) {
+      return res.status(403).json({ message: 'User role not found' });
+    }
 
-    return res.status(200).json({ message: 'succcess', data: outlets })
+    let outlets;
+
+    if (user.role.name === 'admin') {
+      // Admin sees all outlets
+      outlets = await Outlet.findAll();
+    } else if (user.role.name === 'manager') {
+      // Manager sees only their own assigned outlet(s)
+      outlets = await Outlet.findAll({ where: { managerId: user.id } });
+    } else {
+      // Other users see only the outlets they created
+      outlets = await Outlet.findAll({ where: { createdby: user.id } });
+    }
+
+    return res.status(200).json({ message: 'success', data: outlets });
   } catch (error) {
-    console.error('Error fetching outlets:', error)
-    return res.status(500).json({ message: 'Server error', error: error.message })
+    console.error('Error fetching outlets:', error);
+    return res.status(500).json({ message: 'Server error', error: error.message });
   }
-}
+};
+
 
 // ✅ READ one outlet by ID
 export const getOutletById = async (req, res) => {

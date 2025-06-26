@@ -32,7 +32,7 @@ export const createOrder = async (req, res) => {
     grandTotal,
     paymentMethod,
   } = req.body
-
+ 
   const userId = req.user.id
   const transaction = await sequelize.transaction()
 

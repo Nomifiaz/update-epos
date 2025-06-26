@@ -1,6 +1,7 @@
 import { DataTypes } from "sequelize";
 import { sequelize } from "../config/db.js";
 import Role from "./role.js";
+import Permission from "./role_permissions.js";
 
 const Task = sequelize.define("task", {
   code: {
@@ -17,5 +18,6 @@ const Task = sequelize.define("task", {
       foreignKey: 'taskId',
     });
   };
+
 
 export default Task;

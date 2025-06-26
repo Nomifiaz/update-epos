@@ -6,11 +6,11 @@ const createAdmin = async (req, res) => {
     const { userName, password ,roleId} = req.body
     const adminID = req.user.id
    
-    const hashPassword = await bcrypt.hash(password, 12)
+    // const hashPassword = await bcrypt.hash(password, 12)
 
     const newAdmin = await User.create({
       userName,
-      password: hashPassword,
+      password,
       roleId,
       addedBy: adminID,
     })

@@ -12,15 +12,18 @@ const Permission = sequelize.define("permission", {
     type: DataTypes.INTEGER,
     allowNull: false
   },
-    
+    outletId:{
+      type: DataTypes.INTEGER,
+    allowNull: true
+    }
 }, {
   timestamps: true,
   tableName: "permissions"
 });
 // In Role model
-Role.belongsToMany(Task, { through: Permission, foreignKey: 'roleId' });
+//  Role.belongsToMany(Task, { through: Permission, foreignKey: 'roleId' });
 
-// In Task model
-Task.belongsToMany(Role, { through: Permission, foreignKey: 'taskId' });
+// // // In Task model
+// //Task.belongsToMany(Role, { through: Permission, foreignKey: 'taskId' });
 
 export default Permission;

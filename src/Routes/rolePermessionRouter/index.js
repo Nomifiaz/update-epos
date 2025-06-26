@@ -1,7 +1,7 @@
 import express from "express";
 import{addRoles,deleteRole,getAllRoles, updateRole} from "../../controllers/RoleContoller/addRole.js"
 import{addTask,getAllTasks} from "../../controllers/RoleContoller/task.js"
-import { assignPermission, deletePermission, getAllRolesWithTasks, updatePermission } from "../../controllers/RoleContoller/permissions.js";
+import { assignPermission, deletePermission, getRoleByIdWithTasks, updatePermission } from "../../controllers/RoleContoller/permissions.js";
 import {authenticateToken} from "../../middleware/authenticate.js"
 const router = express.Router();
 
@@ -14,11 +14,11 @@ router.delete("/deleteRole/:id",deleteRole);
  router.post("/taskCreate",addTask);
  router.get("/task",getAllTasks);
 //permisons 
-router.post("/addPermission",assignPermission)
+router.post("/addPermission",authenticateToken,assignPermission)
 router.put("/updatePermission/:id",updatePermission)
-router.delete("/deletePermission/:id",deletePermission)
+router.delete("/deletePermission/:roleId/:taskId",deletePermission)
 // route.js
-router.get('/rolesAndTask', getAllRolesWithTasks);
+router.get('/rolesAndTask/:id', getRoleByIdWithTasks);
 
 
 export default router;

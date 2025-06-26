@@ -16,8 +16,8 @@ export const register = async (req, res) => {
         .status(409)
         .json({ success: false, message: 'user alreaday exits' });
     }
-    const hashPassword = await bcrypt.hash(password, 12);
-    const newUser = await User.create({ userName, password: hashPassword,role:"superAdmin" });
+    // const hashPassword = await bcrypt.hash(password, 12);
+    const newUser = await User.create({ userName, password,role:"superAdmin" });
     res.status(201).json({
       success: true,
       message: 'user registered',
@@ -49,10 +49,14 @@ export const login = async (req, res) => {
     if (!findUser) {
       return res
         .status(404)
-        .json({ success: false, message: 'invalid userName or password' });
+        .json({ success: false, message: 'invalid userName ' });
     }
-    const validPassword = await bcrypt.compare(password, findUser.password);
-    if (!validPassword) {
+    // const validPassword = await bcrypt.compare(password, findUser.password);
+    console.log("Password from request:", password);
+console.log("Password from DB:", findUser.password);
+
+    if (password.trim() !== findUser.password.trim())
+ {
       return res
         .status(401)
         .json({ success: false, message: 'invalid userName or password' });

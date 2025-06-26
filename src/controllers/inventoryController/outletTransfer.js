@@ -17,32 +17,47 @@ export const outletTransfer = async (req, res) => {
       return res.status(400).json({ message: 'Missing required fields.' });
     }
 
-    const inventoryItem = await InventoryItem.findOne({ where: { id: inventoryItemId }, transaction: t });
+    const parsedQuantity = parseFloat(quantity);
+    if (isNaN(parsedQuantity) || parsedQuantity <= 0) {
+      return res.status(400).json({ message: 'Quantity must be a valid positive number.' });
+    }
+
+    const inventoryItem = await InventoryItem.findOne({
+      where: { id: inventoryItemId },
+      transaction: t
+    });
+
     if (!inventoryItem) {
       return res.status(404).json({ message: 'Inventory item not found.' });
     }
 
-    const purchaseRate = parseFloat(inventoryItem.lastPurchasePrice);
+    const purchaseRate = parseFloat(inventoryItem.lastPurchasePrice || 0);
     const itemCode = inventoryItem.code;
 
     if (!purchaseRate || !itemCode) {
-      return res.status(400).json({ message: 'Inventory item missing purchase rate, code or unit.' });
+      return res.status(400).json({ message: 'Inventory item missing purchase rate or code.' });
     }
 
-    const totalPurchase = (parseFloat(quantity) * purchaseRate).toFixed(2);
+    const totalPurchase = (parsedQuantity * purchaseRate).toFixed(2);
     const createdBy = req.user?.id;
     if (!createdBy) {
       return res.status(401).json({ message: 'Unauthorized: Missing user info.' });
     }
 
-    const storeStock = await StoreStock.findOne({ where: { inventoryItemId }, transaction: t });
-    if (!storeStock || storeStock.quantity < quantity) {
-      return res.status(400).json({ message: 'Not enough stock available in store to transfer.' });
+    const storeStock = await StoreStock.findOne({
+      where: { inventoryItemId },
+      transaction: t
+    });
+
+    if (!storeStock || parseFloat(storeStock.quantity) < parsedQuantity) {
+      return res.status(400).json({ message: 'Not enough stock in store to transfer.' });
     }
 
-    storeStock.quantity -= quantity;
+    // Deduct from store stock
+    storeStock.quantity = parseFloat(storeStock.quantity) - parsedQuantity;
     await storeStock.save({ transaction: t });
 
+    // Create transfer record
     const transfer = await TransferStock.create({
       outletId,
       sectionId,
@@ -50,42 +65,48 @@ export const outletTransfer = async (req, res) => {
       remarks,
       createdBy,
       inventoryItemId,
-      quantity,
+      quantity: parsedQuantity,
       purchaseRate,
       code: itemCode,
       totalPurchase,
     }, { transaction: t });
 
-    const outletStock = await outletCount.findOne({ where: { outletId, inventoryItemId }, transaction: t });
+    // Update or create outlet stock
+    const outletStock = await outletCount.findOne({
+      where: { outletId, inventoryItemId },
+      transaction: t
+    });
+
     if (outletStock) {
-      outletStock.quantity += quantity;
+      outletStock.quantity = parseFloat(outletStock.quantity || 0) + parsedQuantity;
       outletStock.purchaseRate = purchaseRate;
-      outletStock.totalPurchase = parseFloat(outletStock.totalPurchase) + parseFloat(totalPurchase);
-      outletStock.createdBy = createdBy; // Optionally update creator
+      outletStock.totalPurchase = parseFloat(outletStock.totalPurchase || 0) + parseFloat(totalPurchase);
+      outletStock.createdBy = createdBy;
       await outletStock.save({ transaction: t });
     } else {
       await outletCount.create({
         outletId,
         inventoryItemId,
-        quantity,
+        quantity: parsedQuantity,
         purchaseRate,
         totalPurchase,
-        createdBy, // ✅ added here
+        createdBy,
       }, { transaction: t });
     }
 
     await t.commit(); // Commit all changes
-
     return res.status(201).json({
       message: 'Stock successfully transferred to outlet.',
       data: transfer,
     });
+
   } catch (error) {
     await t.rollback(); // Rollback all changes on error
     console.error('Error in outletTransfer:', error);
     return res.status(500).json({ message: 'Server error', error: error.message });
   }
 };
+
 
 
 // fatch detsils .................

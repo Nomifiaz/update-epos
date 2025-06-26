@@ -12,46 +12,76 @@ import StoreStock from '../../models/storeStock.js'
 
 export const returnStocks = async (req, res) => {
   try {
-    const { outletId, inventoryItemId, quantity, remarks, sectionId, returnDate } = req.body
+    const {
+      outletId,
+      inventoryItemId,
+      quantity,
+      remarks,
+      sectionId,
+      returnDate,
+    } = req.body;
 
     if (!outletId || !inventoryItemId || !quantity || !returnDate) {
-      return res.status(400).json({ message: 'Missing required fields.' })
+      return res.status(400).json({ message: 'Missing required fields.' });
     }
 
-    const outletStock = await OutletCount.findOne({ where: { outletId, inventoryItemId } })
-    if (!outletStock || outletStock.quantity < quantity) {
-      return res.status(400).json({ message: 'Not enough stock in outlet to return.' })
+    const parsedQuantity = parseFloat(quantity);
+    if (isNaN(parsedQuantity) || parsedQuantity <= 0) {
+      return res.status(400).json({ message: 'Quantity must be a positive number.' });
     }
 
-    const inventoryItem = await InventoryItem.findOne({ where: { id: inventoryItemId } })
+    const outletStock = await OutletCount.findOne({
+      where: { outletId, inventoryItemId },
+    });
+
+    if (!outletStock || parseFloat(outletStock.quantity) < parsedQuantity) {
+      return res
+        .status(400)
+        .json({ message: 'Not enough stock in outlet to return.' });
+    }
+
+    const inventoryItem = await InventoryItem.findOne({
+      where: { id: inventoryItemId },
+    });
+
     if (!inventoryItem) {
-      return res.status(404).json({ message: 'Inventory item not found.' })
+      return res.status(404).json({ message: 'Inventory item not found.' });
     }
 
-    const purchaseRate = parseFloat(inventoryItem.lastPurchasePrice)
-    const itemCode = inventoryItem.code
-    const totalReturn = (parseFloat(quantity) * purchaseRate).toFixed(2)
+    const purchaseRate = parseFloat(inventoryItem.lastPurchasePrice || 0);
+    const itemCode = inventoryItem.code;
+    const totalReturn = (parsedQuantity * purchaseRate).toFixed(2);
 
-    const createdBy = req.user?.id
+    const createdBy = req.user?.id;
     if (!createdBy) {
-      return res.status(401).json({ message: 'Unauthorized: Missing user info.' })
+      return res
+        .status(401)
+        .json({ message: 'Unauthorized: Missing user info.' });
     }
 
-    outletStock.quantity -= quantity
-    outletStock.totalPurchase = parseFloat(outletStock.totalPurchase || 0) - parseFloat(totalReturn)
-    await outletStock.save()
+    // Update outlet stock
+    outletStock.quantity = parseFloat(outletStock.quantity || 0) - parsedQuantity;
+    outletStock.totalPurchase =
+      parseFloat(outletStock.totalPurchase || 0) - parseFloat(totalReturn);
+    await outletStock.save();
 
-    const storeStock = await StoreStock.findOne({ where: { inventoryItemId } })
+    // Update or create store stock
+    const storeStock = await StoreStock.findOne({
+      where: { inventoryItemId },
+    });
+
     if (storeStock) {
-      storeStock.quantity += quantity
-      await storeStock.save()
+      storeStock.quantity =
+        parseFloat(storeStock.quantity || 0) + parsedQuantity;
+      await storeStock.save();
     } else {
       await StoreStock.create({
         inventoryItemId,
-        quantity,
-      })
+        quantity: parsedQuantity,
+      });
     }
 
+    // Create return record
     const returnRecord = await returnStock.create({
       outletId,
       sectionId,
@@ -59,21 +89,24 @@ export const returnStocks = async (req, res) => {
       remarks,
       createdBy,
       inventoryItemId,
-      quantity,
+      quantity: parsedQuantity,
       purchaseRate,
       code: itemCode,
       totalReturn,
-    })
+    });
 
     return res.status(201).json({
       message: 'Stock successfully returned from outlet to store.',
       data: returnRecord,
-    })
+    });
   } catch (error) {
-    console.error('Error in returnStock:', error)
-    return res.status(500).json({ message: 'Server error', error: error.message })
+    console.error('Error in returnStock:', error);
+    return res
+      .status(500)
+      .json({ message: 'Server error', error: error.message });
   }
-}
+};
+
 
 export const getAllReturnStocks = async (req, res) => {
   try {

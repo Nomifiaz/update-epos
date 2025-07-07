@@ -1,4 +1,4 @@
-import bcrypt from 'bcryptjs';
+
 import * as jwt from '../config/jwt.js';
 import User from '../models/userModel.js';
 
@@ -52,8 +52,7 @@ export const login = async (req, res) => {
         .json({ success: false, message: 'invalid userName ' });
     }
     // const validPassword = await bcrypt.compare(password, findUser.password);
-    console.log("Password from request:", password);
-console.log("Password from DB:", findUser.password);
+
 
     if (password.trim() !== findUser.password.trim())
  {

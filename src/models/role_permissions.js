@@ -12,7 +12,7 @@ const Permission = sequelize.define("permission", {
     type: DataTypes.INTEGER,
     allowNull: false
   },
-    outletId:{
+    adminId:{
       type: DataTypes.INTEGER,
     allowNull: true
     }

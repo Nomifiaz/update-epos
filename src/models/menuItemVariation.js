@@ -15,15 +15,15 @@ const MenuItemVariation = sequelize.define("MenuItemVariation", {
   },
   size: {
     type: DataTypes.STRING,
-    allowNull: false,
+    allowNull: true,
   },
   price: {
     type: DataTypes.DECIMAL(10, 2),
-    allowNull: false,
+    allowNull: true,
   },
   recipeId: {
     type: DataTypes.INTEGER,
-    allowNull: false,
+    allowNull: true,
     references: {
       model: "Recipes",
       key: "id",

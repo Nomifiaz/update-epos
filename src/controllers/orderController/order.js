@@ -12,6 +12,8 @@ import Recipe from '../../models/recipeModel.js'
 import RecipeItem from '../../models/recipeitem.js'
 import InventoryItem from '../../models/inventoryItem.js'
 import Units from '../../models/units.js'
+import MenuItemVariation from '../../models/menuItemVariation.js'
+import OrderLogs from '../../models/orderLogs.js'
 
 export const createOrder = async (req, res) => {
   const {
@@ -32,7 +34,8 @@ export const createOrder = async (req, res) => {
     grandTotal,
     paymentMethod,
   } = req.body
- 
+
+  console.log('new data', req.body)
   const userId = req.user.id
   const transaction = await sequelize.transaction()
 
@@ -42,41 +45,25 @@ export const createOrder = async (req, res) => {
       include: [{ model: Role, attributes: ['name'] }],
     })
 
-    if (!currentUser) {
-      return res.status(404).json({ message: 'User not found' })
-    }
+    if (!currentUser) return res.status(404).json({ message: 'User not found' })
 
     const roleName = currentUser.role.name
     let outletId = null
 
     if (roleName === 'manager') {
-      const managerOutlet = await Outlet.findOne({
-        where: { managerId: currentUser.id },
-      })
-
-      if (!managerOutlet) {
-        return res.status(400).json({ message: 'No outlet assigned to this manager' })
-      }
-
+      const managerOutlet = await Outlet.findOne({ where: { managerId: currentUser.id } })
+      if (!managerOutlet) return res.status(400).json({ message: 'No outlet assigned to manager' })
       outletId = managerOutlet.id
     } else if (roleName === 'cashier') {
       const manager = await User.findOne({
         where: { id: currentUser.addedBy },
-        include: [{ model: Role, attributes: ['name'] }],
+        include: [{ model: Role }],
       })
-
       if (!manager || manager.role.name !== 'manager') {
-        return res.status(400).json({ message: 'Invalid manager for this cashier' })
+        return res.status(400).json({ message: 'Invalid manager for cashier' })
       }
-
-      const managerOutlet = await Outlet.findOne({
-        where: { managerId: manager.id },
-      })
-
-      if (!managerOutlet) {
-        return res.status(400).json({ message: 'No outlet assigned to this manager' })
-      }
-
+      const managerOutlet = await Outlet.findOne({ where: { managerId: manager.id } })
+      if (!managerOutlet) return res.status(400).json({ message: 'No outlet assigned to manager' })
       outletId = managerOutlet.id
     } else if (roleName === 'admin' || roleName === 'superAdmin') {
       outletId = currentUser.outletId || null
@@ -110,114 +97,76 @@ export const createOrder = async (req, res) => {
       { transaction },
     )
 
-    await Promise.all(
-      items.map(async (item) => {
-        await OrderItem.create(
-          {
-            order_id: order.id,
-            menuItemId: item.itemsid,
-            quantity: item.quantity,
-            price: item.price,
-          },
-          { transaction },
-        )
-      }),
-    )
-//handle inventory deduction
- for (const item of items) {
-  console.log(`\nProcessing order item:`, item);
+    for (const item of items) {
+      const variation = await MenuItemVariation.findOne({
+        where: { id: item.menuItemVariationId },
+      })
 
-  const menuItem = await MenuItem.findOne({
-    where: { id: item.itemsid },
-  });
+      const menuItemId = variation.menuItemId
+      const recipeId = variation.recipeId
 
-  if (!menuItem || !menuItem.recipeId) {
-    throw new Error(`No recipe found for menu item ID ${item.itemsid}`);
-  }
-
-  const recipeItems = await RecipeItem.findAll({
-    where: { recipeId: menuItem.recipeId },
-  });
-
-  if (!recipeItems || recipeItems.length === 0) {
-    throw new Error(`No ingredients found for recipe ID ${menuItem.recipeId}`);
-  }
-
-  for (const recipe of recipeItems) {
-    if (!recipe.inventoryItemId) {
-      throw new Error(`Missing inventoryItemId in recipe item ID ${recipe.id}`);
-    }
-
-    const inventoryItem = await InventoryItem.findOne({
-      where: { id: recipe.inventoryItemId },
-    });
-
-    if (!inventoryItem) {
-      throw new Error(`Inventory item not found for ID ${recipe.inventoryItemId}`);
-    }
-
-    const [saleUnit, purchaseUnit] = await Promise.all([
-      Units.findOne({ where: { id: inventoryItem.saleUnitId } }),
-      Units.findOne({ where: { id: inventoryItem.purchaseUnitId } }),
-    ]);
-
-    const saleUnitName = saleUnit?.name?.toLowerCase();
-    const purchaseUnitName = purchaseUnit?.name?.toLowerCase();
-
-    let totalUsedQty = recipe.quantity * item.quantity;
-
-    console.log(`\n--- Ingredient: ${inventoryItem.name} ---`);
-    console.log(`Recipe uses: ${recipe.quantity} x Order quantity: ${item.quantity}`);
-    console.log(`Initial Used Quantity (${saleUnitName}): ${totalUsedQty}`);
-
-    // Unit conversion logic
-    if (saleUnitName === 'gram' && purchaseUnitName === 'kg') {
-      totalUsedQty = totalUsedQty / 1000;
-      console.log(`Converted from grams to kilograms: ${totalUsedQty} kg`);
-    } else if (saleUnitName === 'ml' && purchaseUnitName === 'liter') {
-      totalUsedQty = totalUsedQty / 1000;
-      console.log(`Converted from ml to liters: ${totalUsedQty} liters`);
-    } else if (saleUnitName !== purchaseUnitName) {
-      console.log(`⚠️ Unhandled conversion: ${saleUnitName} -> ${purchaseUnitName}`);
-    } else {
-      console.log(`No unit conversion needed.`);
-    }
-
-    const outletCount = await OutletCount.findOne({
-      where: {
-        outletId: outletId,
-        inventoryItemId: recipe.inventoryItemId,
-      },
-    });
-
-    if (!outletCount) {
-      throw new Error(`No outlet inventory found for item ID ${recipe.inventoryItemId}`);
-    }
-
-    console.log(`Available quantity in outlet: ${outletCount.quantity} ${purchaseUnitName}`);
-    console.log(`Required quantity: ${totalUsedQty} ${purchaseUnitName}`);
-
-    if (outletCount.quantity < totalUsedQty) {
-      throw new Error(`❌ Insufficient inventory for item ID ${recipe.inventoryItemId}`);
-    }
-
-    const newQty = outletCount.quantity - totalUsedQty;
-
-    await OutletCount.update(
-      { quantity: newQty },
-      {
-        where: {
-          outletId: outletId,
-          inventoryItemId: recipe.inventoryItemId,
+      await OrderItem.create(
+        {
+          order_id: order.id,
+          menuItemId: menuItemId,
+          quantity: item.quantity,
+          price: item.price,
         },
-        transaction,
+        { transaction },
+      )
+
+      // ✅ Skip inventory deduction if there's no recipeId
+      if (!recipeId) {
+        console.log(`ℹ️ Skipping inventory deduction: No recipe for variation ID ${variation.id}`)
+        continue
       }
-    );
 
-    console.log(`✅ Deducted ${totalUsedQty} ${purchaseUnitName}, new outlet quantity: ${newQty}`);
-  }
-}
+      const recipeItems = await RecipeItem.findAll({ where: { recipeId } })
 
+      for (const recipe of recipeItems) {
+        const inventoryItem = await InventoryItem.findOne({ where: { id: recipe.inventoryItemId } })
+        if (!inventoryItem)
+          throw new Error(`Inventory item not found for ID: ${recipe.inventoryItemId}`)
+
+        const [saleUnit, purchaseUnit] = await Promise.all([
+          Units.findOne({ where: { id: inventoryItem.saleUnitId } }),
+          Units.findOne({ where: { id: inventoryItem.purchaseUnitId } }),
+        ])
+
+        const saleUnitName = saleUnit?.name?.toLowerCase()
+        const purchaseUnitName = purchaseUnit?.name?.toLowerCase()
+
+        let totalUsedQty = recipe.quantity * item.quantity
+
+        if (saleUnitName === 'gram' && purchaseUnitName === 'kg') {
+          totalUsedQty = totalUsedQty / 1000
+        } else if (saleUnitName === 'ml' && purchaseUnitName === 'liter') {
+          totalUsedQty = totalUsedQty / 1000
+        }
+
+        const outletCount = await OutletCount.findOne({
+          where: {
+            outletId: outletId,
+            inventoryItemId: recipe.inventoryItemId,
+          },
+        })
+
+        if (!outletCount || outletCount.quantity < totalUsedQty) {
+          throw new Error(`❌ Not enough inventory for ${inventoryItem.name}`)
+        }
+
+        await OutletCount.update(
+          { quantity: outletCount.quantity - totalUsedQty },
+          {
+            where: {
+              outletId: outletId,
+              inventoryItemId: recipe.inventoryItemId,
+            },
+            transaction,
+          },
+        )
+      }
+    }
 
     await transaction.commit()
 
@@ -252,11 +201,9 @@ export const createOrder = async (req, res) => {
     })
   } catch (error) {
     console.error('Error creating order:', error)
-
     if (transaction.finished !== 'commit') {
       await transaction.rollback()
     }
-
     return res.status(500).json({
       message: 'Internal server error',
       error: error.message,
@@ -264,6 +211,7 @@ export const createOrder = async (req, res) => {
   }
 }
 
+//.......................................................................................
 export const getAllOrders = async (req, res, next) => {
   try {
     const findOrders = await Order.findAll()
@@ -296,7 +244,7 @@ export const createOrderLogs = async (req, res, next) => {
 export const getOrderLogs = async (req, res, next) => {
   try {
     const findOrderLogs = await OrderLogs.findAll({
-      include: [{ model: UserModel, attributes: ['userName'] }],
+      include: [{ model: User, attributes: ['userName'] }],
     })
     if (!findOrderLogs) {
       return res.status(404).json({ success: false, message: 'No Order logs found' })
@@ -310,7 +258,7 @@ export const getOrderLogs = async (req, res, next) => {
 export const getOrderLogsById = async (req, res, next) => {
   try {
     const findOrderLogs = await OrderLogs.findByPk(req.params.id, {
-      include: [{ model: UserModel, attributes: ['userName'] }],
+      include: [{ model: User, attributes: ['userName'] }],
     })
     if (!findOrderLogs) {
       return res.status(404).json({ success: false, message: 'No Order logs found' })

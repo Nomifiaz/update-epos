@@ -6,6 +6,8 @@ import Recipe from './recipeModel.js'
 import RecipeType from './recipeTypeModel.js'
 import User from './userModel.js'
 import orderLogs from './orderLogs.js'
+import DealItem from './dealItems.js'
+import MenuItemVariation from './menuItemVariation.js'
 
 Menu.hasMany(MenuItem, { foreignKey: 'menuId' })
 MenuItem.belongsTo(Menu, { foreignKey: 'menuId' })
@@ -19,8 +21,7 @@ Menu.belongsTo(MenuType, { foreignKey: 'menuTypeId' })
 RecipeType.hasMany(Recipe, { foreignKey: 'recipeTypeId' })
 Recipe.belongsTo(RecipeType, { foreignKey: 'recipeTypeId' })
 
-MenuItem.belongsToMany(Deal, { through: 'DealMenuItem' })
-Deal.belongsToMany(MenuItem, { through: 'DealMenuItem' })
+
 //.....................
 User.hasMany(Menu, { foreignKey: 'createdBy', onDelete: 'CASCADE' })
 Menu.belongsTo(User, { foreignKey: 'createdBy' })
@@ -33,9 +34,20 @@ User.hasMany(Recipe, { foreignKey: 'createdBy', onDelete: 'CASCADE' })
 Recipe.belongsTo(User, { foreignKey: 'createdBy' })
 
 //deal
-User.hasMany(Deal, { foreignKey: 'createdBy', onDelete: 'CASCADE' })
-Deal.belongsTo(User, { foreignKey: 'createdBy' })
+// 🔗 Set associations
+Deal.hasMany(DealItem, { foreignKey: 'dealId', onDelete: 'CASCADE' });
+DealItem.belongsTo(Deal, { foreignKey: 'dealId' });
+
+Menu.hasMany(DealItem, { foreignKey: 'menuId', onDelete: 'CASCADE' });
+DealItem.belongsTo(Menu, { foreignKey: 'menuId' });
+
+MenuItemVariation.hasMany(DealItem, { foreignKey: 'menuItemVariationId', onDelete: 'CASCADE' });
+DealItem.belongsTo(MenuItemVariation, { foreignKey: 'menuItemVariationId' });
+
+MenuItem.hasMany(MenuItemVariation, { foreignKey: 'menuItemId', onDelete: 'CASCADE' });
+MenuItemVariation.belongsTo(MenuItem, { foreignKey: 'menuItemId' });
+
 
 orderLogs.belongsTo(User, { foreignKey: 'userId' })
 
-export { Deal, MenuItem, Menu, MenuType, Recipe, RecipeType }
+export {  MenuItem, Menu, MenuType, Recipe, RecipeType,MenuItemVariation,Deal,DealItem}

@@ -8,9 +8,11 @@ export const assignPermission = async (req, res) => {
     try {
       
         const { roleId, taskId } = req.body;
+         const adminId = req.user.id
         const permission = await Permission.create({
             roleId,
             taskId,
+            adminId
             
         });
         return res.status(201).json({
@@ -82,8 +84,42 @@ export const deletePermission = async (req, res) => {
 };
 
 
+// export const getRoleByIdWithTasks = async (req, res) => {
+//   const { id } = req.params; // roleId from route
+//   try {
+//     const role = await Role.findByPk(id, {
+//       attributes: ['id', 'name'],
+//       include: [
+//         {
+//           model: Task,
+//           attributes: ['id', 'code'],
+//           through: { attributes: [] }, // hide join table data
+//         },
+//       ],
+//     });
+
+//     if (!role) {
+//       return res.status(404).json({
+//         status: 'error',
+//         message: 'Role not found',
+//       });
+//     }
+
+//     return res.status(200).json({
+//       status: 'success',
+//       data: role,
+//     });
+//   } catch (error) {
+//     return res.status(500).json({
+//       status: 'error',
+//       message: error.message,
+//     });
+//   }
+// };
 export const getRoleByIdWithTasks = async (req, res) => {
   const { id } = req.params; // roleId from route
+  const adminId = req.user.id; // assuming you have authentication
+
   try {
     const role = await Role.findByPk(id, {
       attributes: ['id', 'name'],
@@ -91,7 +127,10 @@ export const getRoleByIdWithTasks = async (req, res) => {
         {
           model: Task,
           attributes: ['id', 'code'],
-          through: { attributes: [] }, // hide join table data
+          through: {
+            attributes: [],
+            where: { adminId }, // 🔥 filter join table by adminId
+          },
         },
       ],
     });

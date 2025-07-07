@@ -14,8 +14,8 @@ const Deal = sequelize.define(
             allowNull: false,
         },
         menuId: {
-            type: DataTypes.JSON, // Storing as an array
-            allowNull: false,
+            type: DataTypes.INTEGER,
+            allowNull: true,
         },
         price: {
             type: DataTypes.DECIMAL(10, 2),
@@ -41,8 +41,7 @@ const Deal = sequelize.define(
         },
         image: {
             type: DataTypes.STRING,
-            allowNull: false,
-            defaultValue: '',
+            allowNull: true,
         },
     },
     {timestamps: true},

@@ -18,7 +18,7 @@ router.post("/addPermission",authenticateToken,assignPermission)
 router.put("/updatePermission/:id",updatePermission)
 router.delete("/deletePermission/:roleId/:taskId",deletePermission)
 // route.js
-router.get('/rolesAndTask/:id', getRoleByIdWithTasks);
+router.get('/rolesAndTask/:id',authenticateToken, getRoleByIdWithTasks);
 
 
 export default router;

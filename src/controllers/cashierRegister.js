@@ -1,6 +1,6 @@
 import User from '../models/userModel.js'
 
-import bcrypt from 'bcrypt'
+import bcryptjs from 'bcryptjs'
 
 const createCashier = async (req, res) => {
   try {
@@ -8,7 +8,7 @@ const createCashier = async (req, res) => {
     const adminID = req.user.id
 
     // Encrypt password before saving
-    const hashPassword = await bcrypt.hash(password, 12)
+    const hashPassword = await bcryptjs.hash(password, 12)
 
     // Create new cashier
     const newCashier = await User.create({

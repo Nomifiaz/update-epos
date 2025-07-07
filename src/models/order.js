@@ -89,7 +89,7 @@ const Order = sequelize.define("Order", {
   },
   status: {
     type: DataTypes.ENUM("pending", "completed", "cancelled"),
-    defaultValue: "pending",
+    defaultValue: "completed",
   },
 }, { timestamps: true });
 

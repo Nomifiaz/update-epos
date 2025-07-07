@@ -1,45 +1,105 @@
 import path from 'path'
-import { Deal, MenuItem } from '../models/relations.js'
+// import MenuItemVariation from "../models/menuItemVariation.js";
+import { Deal, MenuItem,Menu ,MenuItemVariation} from '../models/relations.js'
 import User from '../models/userModel.js'
 import Role from '../models/role.js';
+import DealItem from "../models/dealItems.js"
+// import MenuItemVariation from "../models/menuItemVariation.js";
+
 
 export const createDeal = async (req, res) => {
-  const { name, description, price, quantity, status, menuId } = req.body;
+  const { name, description, price, quantity, status, items } = req.body;
   const adminID = req.user.id;
 
-  if (!name || !description || !price || !menuId) {
+  if (!name || !description || !price || !items) {
     return res.status(400).json({
       success: false,
-      message: "All fields are required",
+      message: "Name, description, price, and items are required",
     });
   }
 
-  try {
-    // Generate image URL if a file is uploaded
-    const imageUrl = req.file ? `/uploads/${req.file.filename}` : null
-    //  convert integer arry
+  let parsedItems = [];
+  if (typeof items === "string") {
+    try {
+      parsedItems = JSON.parse(items);
+    } catch (err) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid items format. Must be valid JSON array",
+      });
+    }
+  } else {
+    parsedItems = items;
+  }
 
-    
-    // Create deal first
+  try {
+    // Validate all variation IDs
+    for (const group of parsedItems) {
+      const { menuId, menuItems } = group;
+
+      if (!menuId || !Array.isArray(menuItems)) {
+        return res.status(400).json({
+          success: false,
+          message: "Each group must have a menuId and menuItems array",
+        });
+      }
+
+      for (const item of menuItems) {
+        if (!item.menuItemVariationId) {
+          return res.status(400).json({
+            success: false,
+            message: "Each menu item must include menuItemVariationId",
+          });
+        }
+
+        const variation = await MenuItemVariation.findByPk(item.menuItemVariationId);
+        if (!variation) {
+          return res.status(404).json({
+            success: false,
+            message: `MenuItemVariation with ID ${item.menuItemVariationId} not found`,
+          });
+        }
+      }
+    }
+
+    // Create deal
+    const imageUrl = req.file ? `/uploads/${path.basename(req.file.path)}` : null;
+
     const deal = await Deal.create({
       name,
       description,
       price,
-      image: imageUrl,
       quantity: quantity || 0,
       status: status !== undefined ? status : true,
-      menuId: Array.isArray(menuId) ? menuId : [menuId],
-      createdBy: adminID  // Ensure it's an array
+      image: imageUrl,
+      createdBy: adminID,
     });
 
-    res.status(201).json({
+    // Add deal items
+    const createdItems = [];
+
+    for (const group of parsedItems) {
+      const { menuId, menuItems } = group;
+
+      for (const item of menuItems) {
+        const dealItem = await DealItem.create({
+          dealId: deal.id,
+          menuId,
+          menuItemVariationId: item.menuItemVariationId,
+        });
+        createdItems.push(dealItem);
+      }
+    }
+
+    return res.status(201).json({
       success: true,
       message: "Deal created successfully",
       deal,
+      items: createdItems,
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({
+    console.error("Error creating deal:", error);
+    return res.status(500).json({
       success: false,
       message: "Error creating deal",
       error: error.message,
@@ -51,7 +111,6 @@ export const getDeals = async (req, res) => {
   try {
     const userID = req.user.id;
 
-    // Get the full user record with role
     const user = await User.findOne({
       where: { id: userID },
       include: { model: Role, attributes: ['name'] },
@@ -65,7 +124,6 @@ export const getDeals = async (req, res) => {
     let createdByIds = [];
 
     if (userRole === 'admin' || userRole === 'superAdmin') {
-      // Admin/SuperAdmin gets deals by themselves, their managers and cashiers
       const managers = await User.findAll({
         where: { addedBy: userID },
         include: { model: Role, where: { name: 'manager' }, attributes: [] },
@@ -83,7 +141,6 @@ export const getDeals = async (req, res) => {
       createdByIds = [userID, ...managerIds, ...cashierIds];
 
     } else if (userRole === 'manager') {
-      // Manager gets deals by themselves, their admin, and their cashiers
       const adminId = user.addedBy;
 
       const cashiers = await User.findAll({
@@ -96,7 +153,6 @@ export const getDeals = async (req, res) => {
       createdByIds = [userID, adminId, ...cashierIds];
 
     } else if (userRole === 'cashier') {
-      // Cashier gets deals by themselves, their manager, and their admin
       const manager = await User.findOne({ where: { id: user.addedBy } });
 
       if (!manager || !manager.addedBy) {
@@ -104,26 +160,80 @@ export const getDeals = async (req, res) => {
       }
 
       const adminId = manager.addedBy;
-
       createdByIds = [userID, user.addedBy, adminId];
     } else {
       return res.status(403).json({ success: false, message: 'Unauthorized role' });
     }
 
-    // Fetch deals with included menu item names
     const deals = await Deal.findAll({
       where: { createdBy: createdByIds },
-      include: [{
-        model: MenuItem,
-        attributes: ['name'],
-        through: { attributes: [] },
-      }],
+      include: [
+        {
+          model: DealItem,
+          include: [
+            {
+              model: Menu,
+              attributes: ['id', 'name'],
+            },
+            {
+              model: MenuItemVariation,
+              attributes: ['id', 'size', 'price'],
+              include: {
+                model: MenuItem,
+                attributes: ['id', 'name'],
+              },
+            },
+          ],
+        },
+      ],
+    });
+
+    const formattedDeals = deals.map(deal => {
+      const menuMap = {};
+
+      for (const item of deal.DealItems) {
+        const menuId = item.Menu?.id;
+        const menuName = item.Menu?.name;
+        const size = item.MenuItemVariation?.size;
+
+        const groupKey = `${menuId}-${size}`; // Unique by menuId and size
+
+        if (!menuMap[groupKey]) {
+          menuMap[groupKey] = {
+            menuId,
+            name: menuName,
+            
+            menuItems: [],
+          };
+        }
+
+        menuMap[groupKey].menuItems.push({
+          menuItemVariationId: item.MenuItemVariation?.id,
+          size: item.MenuItemVariation?.size,
+          price: item.MenuItemVariation?.price,
+          menuItem: {
+            id: item.MenuItemVariation?.MenuItem?.id,
+            name: item.MenuItemVariation?.MenuItem?.name,
+          },
+        });
+      }
+
+      return {
+        id: deal.id,
+        image: deal.image,
+        name: deal.name,
+        description: deal.description,
+        price: deal.price,
+        quantity: deal.quantity,
+        status: deal.status,
+        items: Object.values(menuMap),
+      };
     });
 
     res.status(200).json({
       success: true,
       message: 'Deals fetched successfully',
-      deals,
+      deals: formattedDeals,
     });
 
   } catch (error) {
@@ -135,6 +245,8 @@ export const getDeals = async (req, res) => {
     });
   }
 };
+
+
 
 //............................................
 export const getDealById = async (req, res) => {
@@ -222,12 +334,7 @@ export const deleteDeal = async (req, res) => {
       return res.status(404).json({ success: false, message: "Deal not found" });
     }
 
-    // Check if the logged-in user is the creator of the deal
-    if (deal.createdBy !== userID) {
-      return res.status(403).json({ success: false, message: "Unauthorized to delete this Deal" });
-    }
-
-    await deal.setMenuItems([]);
+   
     await deal.destroy();
 
     res.status(200).json({ success: true, message: "Deal deleted successfully" });

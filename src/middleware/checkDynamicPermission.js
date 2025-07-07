@@ -1,60 +1,59 @@
-import jwt from 'jsonwebtoken';
-import User from '../models/userModel.js';
-import Permission from '../models/role_permissions.js';
-import Role from '../models/role.js';
-import Task from '../models/task.js';
-import Outlet from '../models/outlet.js';
+import jwt from 'jsonwebtoken'
+import User from '../models/userModel.js'
+import Permission from '../models/role_permissions.js'
+import Role from '../models/role.js'
+import Task from '../models/task.js'
+import Outlet from '../models/outlet.js'
 // middleware/checkPermission.js
 
-
 // middleware/checkPermission.js
-export const checkPermission = (...taskCodes) => {
-  return async (req, res, next) => {
-    const userId = req.user.id;
+// export const checkPermission = (...taskCodes) => {
+//   return async (req, res, next) => {
+//     const userId = req.user.id;
 
-    try {
-      const user = await User.findByPk(userId, {
-        include: {
-          model: Role,
-          include: {
-            model: Task,
-            attributes: ['code'],
-            through: { attributes: [] },
-            required: false
-          }
-        }
-      });
+//     try {
+//       const user = await User.findByPk(userId, {
+//         include: {
+//           model: Role,
+//           include: {
+//             model: Task,
+//             attributes: ['code'],
+//             through: { attributes: [] },
+//             required: false
+//           }
+//         }
+//       });
 
-      if (!user || !user.role) {
-        return res.status(403).json({ message: 'Access denied: No role assigned' });
-      }
+//       if (!user || !user.role) {
+//         return res.status(403).json({ message: 'Access denied: No role assigned' });
+//       }
 
-      const userTaskCodes = user.role.tasks.map(task => task.code);
+//       const userTaskCodes = user.role.tasks.map(task => task.code);
 
-      // ✅ Full access override
-      if (userTaskCodes.includes('all_permissions')) {
-        console.log("✅ Role has 'all_permissions': full access granted");
-        return next();
-      }
+//       // ✅ Full access override
+//       if (userTaskCodes.includes('all_permissions')) {
+//         console.log("✅ Role has 'all_permissions': full access granted");
+//         return next();
+//       }
 
-      // ✅ Check if at least one permission matches
-      const hasPermission = taskCodes.some(code => userTaskCodes.includes(code));
+//       // ✅ Check if at least one permission matches
+//       const hasPermission = taskCodes.some(code => userTaskCodes.includes(code));
 
-      if (!hasPermission) {
-        console.log("❌ Permission denied. Required:", taskCodes);
-        console.log("🔎 User has:", userTaskCodes);
-        return res.status(403).json({ message: 'Access denied: Permission missing' });
-      }
+//       if (!hasPermission) {
+//         console.log("❌ Permission denied. Required:", taskCodes);
+//         console.log("🔎 User has:", userTaskCodes);
+//         return res.status(403).json({ message: 'Access denied: Permission missing' });
+//       }
 
-      console.log("✅ Access granted with one of:", taskCodes);
-      next();
+//       console.log("✅ Access granted with one of:", taskCodes);
+//       next();
 
-    } catch (error) {
-      console.error("🔥 Middleware error:", error);
-      return res.status(500).json({ message: 'Internal Server Error' });
-    }
-  };
-};
+//     } catch (error) {
+//       console.error("🔥 Middleware error:", error);
+//       return res.status(500).json({ message: 'Internal Server Error' });
+//     }
+//   };
+// };
 // export const checkPermission = (...taskCodes) => {
 //   return async (req, res, next) => {
 //     try {
@@ -136,4 +135,170 @@ export const checkPermission = (...taskCodes) => {
 //   };
 // };
 
+// middleware/checkPermission.js
+// export const checkPermission = (...taskCodes) => {
+//   return async (req, res, next) => {
+//     const userId = req.user.id
 
+//     try {
+//       // Step 1: Get User and Role
+//       const user = await User.findByPk(userId, {
+//         include: {
+//           model: Role,
+//           attributes: ['id', 'name'],
+//         },
+//       })
+
+//       if (!user || !user.role) {
+//         return res.status(403).json({ message: 'Access denied: Role not found' })
+//       }
+
+//       const roleName = user.role.name
+//       let adminId = null
+
+//       // Step 2: Trace adminId based on role
+//       if (roleName === 'admin') {
+//         adminId = user.id
+//       } else if (roleName === 'manager') {
+//         adminId = user.addedBy // admin added manager
+//       } else if (roleName === 'cashier') {
+//         const manager = await User.findByPk(user.addedBy, {
+//           include: { model: Role, attributes: ['name'] },
+//         })
+
+//         if (!manager || manager.role.name !== 'manager') {
+//           return res.status(403).json({ message: 'Invalid manager relationship' })
+//         }
+
+//         adminId = manager.addedBy // manager was added by admin
+//       }
+
+//       if (!adminId) {
+//         return res.status(403).json({ message: 'Admin link not found' })
+//       }
+
+//       // Step 3: Get permissions assigned by this admin
+//       const userWithTasks = await User.findByPk(userId, {
+//         include: {
+//           model: Role,
+//           include: {
+//             model: Task,
+//             attributes: ['code'],
+//             through: {
+//               attributes: [],
+//               where: { adminId },
+//             },
+//             required: false,
+//           },
+//         },
+//       })
+
+//       const userTaskCodes = userWithTasks.role.tasks.map((t) => t.code)
+
+//       // Full access
+//       if (userTaskCodes.includes('all_permissions')) {
+//         return next()
+//       }
+
+//       const hasPermission = taskCodes.some((code) => userTaskCodes.includes(code))
+
+//       if (!hasPermission) {
+//         return res.status(403).json({
+//           message: 'Permission denied: Required permission not assigned by your admin',
+//           required: taskCodes,
+//           assigned: userTaskCodes,
+//         })
+//       }
+
+//       return next()
+//     } catch (error) {
+//       console.error('🔥 checkPermission error:', error)
+//       return res.status(500).json({ message: 'Internal server error' })
+//     }
+//   }
+// }
+export const checkPermission = (...taskCodes) => {
+  return async (req, res, next) => {
+    const userId = req.user.id;
+
+    try {
+      // Step 1: Get User and Role
+      const user = await User.findByPk(userId, {
+        include: {
+          model: Role,
+          attributes: ['id', 'name'],
+        },
+      });
+
+      if (!user || !user.role) {
+        return res.status(403).json({ message: 'Access denied: Role not found' });
+      }
+
+      const roleName = user.role.name;
+
+      // ✅ Step 1.5: Allow admins direct access
+      if (roleName === 'admin') {
+        return next();
+      }
+
+      let adminId = null;
+
+      // Step 2: Trace adminId based on role
+      if (roleName === 'manager') {
+        adminId = user.addedBy; // admin added manager
+      } else if (roleName === 'cashier') {
+        const manager = await User.findByPk(user.addedBy, {
+          include: { model: Role, attributes: ['name'] },
+        });
+
+        if (!manager || manager.role.name !== 'manager') {
+          return res.status(403).json({ message: 'Invalid manager relationship' });
+        }
+
+        adminId = manager.addedBy; // manager was added by admin
+      }
+
+      if (!adminId) {
+        return res.status(403).json({ message: 'Admin link not found' });
+      }
+
+      // Step 3: Get permissions assigned by this admin
+      const userWithTasks = await User.findByPk(userId, {
+        include: {
+          model: Role,
+          include: {
+            model: Task,
+            attributes: ['code'],
+            through: {
+              attributes: [],
+              where: { adminId },
+            },
+            required: false,
+          },
+        },
+      });
+
+      const userTaskCodes = userWithTasks.role.tasks.map((t) => t.code);
+
+      // Full access
+      if (userTaskCodes.includes('all_permissions')) {
+        return next();
+      }
+
+      const hasPermission = taskCodes.some((code) => userTaskCodes.includes(code));
+
+      if (!hasPermission) {
+        return res.status(403).json({
+          message: 'Permission denied: Required permission not assigned by your admin',
+          required: taskCodes,
+          assigned: userTaskCodes,
+        });
+      }
+
+      return next();
+    } catch (error) {
+      console.error('🔥 checkPermission error:', error);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+  };
+};
